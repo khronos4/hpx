@@ -24,6 +24,7 @@ set(example_programs
     timed_wake
     use_main_thread
     wait_composition
+    composable_guard_test
    )
 
 if(HPX_HAVE_CXX11_LAMBDAS)

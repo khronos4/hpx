@@ -15,9 +15,10 @@ struct guard_task {
     std::atomic<guard_task *> next;
     boost::function<void()> run;
     std::atomic<signed char> refcnt;
-    bool single_guard;
+    const bool single_guard;
 
     guard_task() : next((guard_task *)0), run(0), refcnt(2), single_guard(true) {}
+    guard_task(bool sg) : next((guard_task*)0), run(0), refcnt(2), single_guard(sg) {}
 
     template<class Archive>
     void serialize(Archive& ar,const unsigned int version) {}
@@ -43,53 +44,19 @@ void guard_set::sort() {
     }
 }
 
-typedef std::vector<boost::shared_ptr<guard> >::iterator guard_iter;
-
-struct stage_data_element {
-    guard_task *stage;
-};
-
 struct stage_data {
+    guard_set gs;
     boost::function<void()> task;
-    const unsigned int n;
-    stage_data_element *elems;
-    std::atomic<unsigned int> counter;
+    guard_task **stages;
     stage_data(boost::function<void()> task_,std::vector<boost::shared_ptr<guard> >& guards);
     ~stage_data() {
-        delete[] elems;
+        delete[] stages;
+        stages = NULL;
     }
 };
 
-void stage_task(boost::shared_ptr<stage_data> sd,unsigned int i,unsigned int n) {
-    unsigned int val = sd->counter.fetch_add(1);
-    guard_task *zero = NULL;
-    // if this is the last task in the set...
-    if(val+1 == n) {
-        sd->task();
-        // The tasks on the other guards had single_task marked,
-        // so they haven't had their next field set yet. Setting
-        // the next field is necessary if they are going to
-        // continue processing.
-        for(unsigned int k=0;k<sd->n;k++) {
-            guard_task *lt = sd->elems[k].stage;
-            if(!lt->next.compare_exchange_strong(zero,lt)) {
-                run_async(lt->next);
-            }
-            free(lt);
-        }
-    }
-}
-
-
-stage_data::stage_data(boost::function<void()> task_,std::vector<boost::shared_ptr<guard> >& guards) : task(task_), n(guards.size()), elems(new stage_data_element[n]), counter(0) {
-    for(unsigned int i=0;i<n;i++) {
-        elems[i].stage = new guard_task();
-        elems[i].stage->single_guard = false;
-    }
-}
-
 void run_guarded(guard& g,guard_task *task) {
-    guard_task *zero = NULL;
+    BOOST_ASSERT(task != NULL);
     guard_task *prev = g.task.exchange(task);
     if(prev != NULL) {
         guard_task *zero = NULL;
@@ -102,9 +69,46 @@ void run_guarded(guard& g,guard_task *task) {
     }
 }
 
-void run_guarded(guard_set& guards,boost::function<void()> task) {
+void stage_task(stage_data *sd,unsigned int i,unsigned int n) {
     guard_task *zero = NULL;
-    int n = guards.guards.size();
+    BOOST_ASSERT(n == sd->n);
+    // if this is the last task in the set...
+    if(i+1 == n) {
+        sd->task();
+        // The tasks on the other guards had single_task marked,
+        // so they haven't had their next field set yet. Setting
+        // the next field is necessary if they are going to
+        // continue processing.
+        for(unsigned int k=0;k<n;k++) {
+            guard_task *lt = sd->stages[k];
+            BOOST_ASSERT(!lt->single_guard);
+            zero = NULL;
+            if(!lt->next.compare_exchange_strong(zero,lt)) {
+                BOOST_ASSERT(zero != lt);
+                run_async(zero);
+            }
+            free(lt);
+        }
+        delete sd;
+    } else {
+        int k = i + 1;
+        guard_task *stage = sd->stages[k];
+        stage->run = boost::bind(stage_task,sd,k,n);
+        BOOST_ASSERT(!stage->single_guard);
+        run_guarded(*sd->gs.get(k),stage);
+    }
+}
+
+
+stage_data::stage_data(boost::function<void()> task_,std::vector<boost::shared_ptr<guard> >& guards) : task(task_), stages(new guard_task*[guards.size()]) {
+    const unsigned int n = guards.size();
+    for(unsigned int i=0;i<n;i++) {
+        stages[i] = new guard_task(false);
+    }
+}
+
+void run_guarded(guard_set& guards,boost::function<void()> task) {
+    unsigned int n = guards.guards.size();
     if(n == 0) {
         task();
         return;
@@ -112,12 +116,12 @@ void run_guarded(guard_set& guards,boost::function<void()> task) {
         run_guarded(*guards.guards[0],task);
         return;
     }
-    boost::shared_ptr<stage_data> sd(new stage_data(task,guards.guards));
-    for(unsigned int k=0;k<sd->n;k++) {
-        sd->elems[k].stage->run = boost::bind(stage_task,sd,k,n);
-        guard_task *stage = sd->elems[k].stage;
-        run_guarded(*guards.guards[k],stage);
-    }
+    stage_data *sd = new stage_data(task,guards.guards);
+    int k = 0;
+    sd->stages[k]->run = boost::bind(stage_task,sd,k,n);
+    sd->gs = guards;
+    guard_task *stage = sd->stages[k];
+    run_guarded(*sd->gs.get(k),stage);
 }
 
 void run_guarded(guard& guard,boost::function<void()> task) {
@@ -136,6 +140,7 @@ HPX_REGISTER_PLAIN_ACTION(composable_run_action);
 
 namespace hpx { namespace lcos { namespace local {
 void run_async(guard_task *task) {
+    BOOST_ASSERT(task != NULL);
     hpx::apply<composable_run_action>(hpx::find_here(),task);
 }
 
@@ -149,7 +154,8 @@ void run_composable(guard_task *task) {
     // to this guard.
     if(task->single_guard) {
         if(!task->next.compare_exchange_strong(zero,task)) {
-            run_async(task->next.load());
+            BOOST_ASSERT(task->next.load()!=NULL);
+            run_async(zero);
         }
         free(task);
     }

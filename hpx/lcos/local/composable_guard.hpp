@@ -9,7 +9,6 @@
 #include <atomic>
 #include <vector>
 #include <boost/shared_ptr.hpp>
-#include <boost/shared_array.hpp>
 #include <iostream>
 
 namespace hpx { namespace lcos { namespace local {
@@ -42,6 +41,7 @@ public:
     }
 
     friend void run_guarded(guard_set& guards,boost::function<void()> task);
+    boost::shared_ptr<guard> get(int i) { return guards[i]; }
 };
 
 /// Conceptually, a guard acts like a mutex on an asyncrhonous task. The

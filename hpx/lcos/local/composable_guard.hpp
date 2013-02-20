@@ -4,9 +4,8 @@
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 #ifndef COMPOSABLE_GUARD_HPP
 #define COMPOSABLE_GUARD_HPP
-#include <hpx/hpx_init.hpp>
 #include <hpx/include/actions.hpp>
-#include <atomic>
+#include <boost/atomic.hpp>
 #include <vector>
 #include <boost/shared_ptr.hpp>
 #include <iostream>

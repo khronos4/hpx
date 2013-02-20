@@ -69,12 +69,12 @@ void run_guarded(guard& g,guard_task *task) {
     }
 }
 
-void stage_task(stage_data *sd,unsigned int i,unsigned int n) {
-    guard_task *zero = NULL;
-    BOOST_ASSERT(n == sd->n);
-    // if this is the last task in the set...
-    if(i+1 == n) {
-        sd->task();
+struct stage_task_cleanup {
+	stage_data *sd;
+	unsigned int n;
+	stage_task_cleanup(stage_data *sd_,int n_) : sd(sd_), n(n_) {}
+	~stage_task_cleanup() {
+	    guard_task *zero = NULL;
         // The tasks on the other guards had single_task marked,
         // so they haven't had their next field set yet. Setting
         // the next field is necessary if they are going to
@@ -90,6 +90,14 @@ void stage_task(stage_data *sd,unsigned int i,unsigned int n) {
             free(lt);
         }
         delete sd;
+	}
+};
+
+void stage_task(stage_data *sd,unsigned int i,unsigned int n) {
+    // if this is the last task in the set...
+    if(i+1 == n) {
+    	stage_task_cleanup stc(sd,n);
+        sd->task();
     } else {
         int k = i + 1;
         guard_task *stage = sd->stages[k];
@@ -144,20 +152,32 @@ void run_async(guard_task *task) {
     hpx::apply<composable_run_action>(hpx::find_here(),task);
 }
 
+// This class exists so that a destructor is
+// used to perform cleanup. By using a destructor
+// we ensure the code works even if exceptions are
+// thrown.
+struct run_composable_cleanup {
+	guard_task *task;
+	run_composable_cleanup(guard_task *task_) : task(task_) {}
+	~run_composable_cleanup() {
+	    guard_task *zero = 0;
+	    // If single_guard is false, then this is one of the
+	    // setup tasks for a multi-guarded task. By not setting
+	    // the next field, we halt processing on items queued
+	    // to this guard.
+	    if(task->single_guard) {
+	        if(!task->next.compare_exchange_strong(zero,task)) {
+	            BOOST_ASSERT(task->next.load()!=NULL);
+	            run_async(zero);
+	        }
+	        free(task);
+	    }
+	}
+};
+
 void run_composable(guard_task *task) {
     BOOST_ASSERT(task != NULL);
+    run_composable_cleanup rcc(task);
     task->run();
-    guard_task *zero = 0;
-    // If single_guard is false, then this is one of the
-    // setup tasks for a multi-guarded task. By not setting
-    // the next field, we halt processing on items queued
-    // to this guard.
-    if(task->single_guard) {
-        if(!task->next.compare_exchange_strong(zero,task)) {
-            BOOST_ASSERT(task->next.load()!=NULL);
-            run_async(zero);
-        }
-        free(task);
-    }
 }
 }}};

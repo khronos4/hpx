@@ -20,6 +20,7 @@ set(subdirs
     distributed_test
     embarrassingly_parallel
     fortran_threadsafe
+    game_of_life
     gtcx
     gravity
     heartbeat

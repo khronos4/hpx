@@ -45,6 +45,7 @@
 #include <hpx/util/coroutine/detail/config.hpp>
 #include <hpx/util/coroutine/exception.hpp>
 #include <hpx/util/coroutine/detail/swap_context.hpp>
+#include <hpx/util/get_and_reset_value.hpp>
 
 #if HPX_EMULATE_SWAP_CONTEXT != 0
 extern "C" void switch_to_fiber(void* lpFiber) throw();
@@ -245,10 +246,7 @@ namespace hpx { namespace util { namespace coroutines
       }
       static boost::uint64_t get_stack_recycle_count(bool reset)
       {
-          boost::int64_t result = get_stack_recycle_counter();
-          if (reset)
-              get_stack_recycle_counter() = 0;
-          return result;
+          return util::get_and_reset_value(get_stack_recycle_counter(), reset);
       }
       static boost::uint64_t increment_stack_recycle_count()
       {

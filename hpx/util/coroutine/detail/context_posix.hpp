@@ -46,6 +46,7 @@
 #include <boost/config.hpp>
 #include <boost/assert.hpp>
 #include <boost/atomic.hpp>
+#include <hpx/util/get_and_reset_value.hpp>
 
 #if defined(__FreeBSD__) || (defined(_XOPEN_UNIX) && defined(_XOPEN_VERSION) && _XOPEN_VERSION >= 500)
 
@@ -258,10 +259,7 @@ namespace hpx { namespace util { namespace coroutines {
         }
         static boost::uint64_t get_stack_recycle_count(bool reset)
         {
-            boost::int64_t result = get_stack_recycle_counter();
-            if (reset)
-                get_stack_recycle_counter() = 0;
-            return result;
+            return util::get_and_reset_value(get_stack_recycle_counter(), reset);
         }
         static boost::uint64_t increment_stack_recycle_count()
         {

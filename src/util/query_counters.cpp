@@ -274,9 +274,6 @@ namespace hpx { namespace util
         if (description)
             output << description << std::endl;
 
-//         // wait for all values to be returned
-//         wait_all(values, ec);
-
         // Output the performance counter value.
         for (std::size_t i = 0; i < values.size(); ++i)
             print_value(output, names_[i], values[i].get(), uoms_[i]);

@@ -46,6 +46,8 @@ void worker(hpx::util::function<void()> const& f)
             act(targets[i], f);
         }
     }
+
+    hpx::evaluate_active_counters(true, "---");
 }
 
 ///////////////////////////////////////////////////////////////////////////////

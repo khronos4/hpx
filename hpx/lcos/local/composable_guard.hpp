@@ -4,19 +4,19 @@
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 #ifndef COMPOSABLE_GUARD_HPP
 #define COMPOSABLE_GUARD_HPP
+
+#include <hpx/hpx_fwd.hpp>
 #include <hpx/include/actions.hpp>
 #include <boost/atomic.hpp>
-#include <vector>
 #include <boost/shared_ptr.hpp>
+#include <vector>
 #include <iostream>
 
 namespace hpx { namespace lcos { namespace local {
-class guard_task;
-
-class guard_task;
+struct guard_task;
 
 struct guard {
-    std::atomic<guard_task *> task;
+    boost::atomic<guard_task *> task;
 
     guard() : task((guard_task *)0) {}
     ~guard() {
@@ -39,8 +39,8 @@ public:
         sorted = false;
     }
 
-    friend void run_guarded(guard_set& guards,boost::function<void()> task);
-    boost::shared_ptr<guard> get(int i) { return guards[i]; }
+    friend HPX_API_EXPORT void run_guarded(guard_set& guards,boost::function<void()> task);
+    boost::shared_ptr<guard> get(std::size_t i) { return guards[i]; }
 };
 
 /// Conceptually, a guard acts like a mutex on an asyncrhonous task. The

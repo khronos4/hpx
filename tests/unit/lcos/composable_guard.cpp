@@ -33,13 +33,13 @@ void both() {
 std::size_t increments = 3000;
 
 void check() {
-	HPX_TEST_EQ(2*increments,i1);
-	HPX_TEST_EQ(2*increments,i2);
+    HPX_TEST_EQ(2*increments,i1);
+    HPX_TEST_EQ(2*increments,i2);
 }
 
 int hpx_main(boost::program_options::variables_map& vm) {
     if (vm.count("increments"))
-    	increments = vm["increments"].as<std::size_t>();
+        increments = vm["increments"].as<std::size_t>();
 
     // create the guard set
     guards.add(l1);

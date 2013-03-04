@@ -2,7 +2,11 @@
 //
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
+
 #include "hpx/lcos/local/composable_guard.hpp"
+#include <hpx/apply.hpp>
+
+#include <boost/cstdint.hpp>
 
 namespace hpx { namespace lcos { namespace local {
 
@@ -12,16 +16,13 @@ void run_async(guard_task *task);
 // A link in the list of tasks attached
 // to a guard
 struct guard_task {
-    std::atomic<guard_task *> next;
+    boost::atomic<guard_task *> next;
     boost::function<void()> run;
-    std::atomic<signed char> refcnt;
+    boost::atomic<signed char> refcnt;
     const bool single_guard;
 
     guard_task() : next((guard_task *)0), run(0), refcnt(2), single_guard(true) {}
     guard_task(bool sg) : next((guard_task*)0), run(0), refcnt(2), single_guard(sg) {}
-
-    template<class Archive>
-    void serialize(Archive& ar,const unsigned int version) {}
 };
 
 void free(guard_task *task) {
@@ -33,7 +34,7 @@ void free(guard_task *task) {
     }
 }
 
-int sort_guard(boost::shared_ptr<guard> l1,boost::shared_ptr<guard> l2) {
+boost::int64_t sort_guard(boost::shared_ptr<guard> l1,boost::shared_ptr<guard> l2) {
     return boost::get_pointer(l1) - boost::get_pointer(l2);
 }
 
@@ -48,7 +49,8 @@ struct stage_data {
     guard_set gs;
     boost::function<void()> task;
     guard_task **stages;
-    stage_data(boost::function<void()> task_,std::vector<boost::shared_ptr<guard> >& guards);
+    stage_data(boost::function<void()> task_,
+        std::vector<boost::shared_ptr<guard> >& guards);
     ~stage_data() {
         delete[] stages;
         stages = NULL;
@@ -70,16 +72,16 @@ void run_guarded(guard& g,guard_task *task) {
 }
 
 struct stage_task_cleanup {
-	stage_data *sd;
-	unsigned int n;
-	stage_task_cleanup(stage_data *sd_,int n_) : sd(sd_), n(n_) {}
-	~stage_task_cleanup() {
-	    guard_task *zero = NULL;
+    stage_data *sd;
+    std::size_t n;
+    stage_task_cleanup(stage_data *sd_,std::size_t n_) : sd(sd_), n(n_) {}
+    ~stage_task_cleanup() {
+        guard_task *zero = NULL;
         // The tasks on the other guards had single_task marked,
         // so they haven't had their next field set yet. Setting
         // the next field is necessary if they are going to
         // continue processing.
-        for(unsigned int k=0;k<n;k++) {
+        for(std::size_t k=0;k<n;k++) {
             guard_task *lt = sd->stages[k];
             BOOST_ASSERT(!lt->single_guard);
             zero = NULL;
@@ -90,16 +92,16 @@ struct stage_task_cleanup {
             free(lt);
         }
         delete sd;
-	}
+    }
 };
 
-void stage_task(stage_data *sd,unsigned int i,unsigned int n) {
+void stage_task(stage_data *sd,std::size_t i,std::size_t n) {
     // if this is the last task in the set...
     if(i+1 == n) {
-    	stage_task_cleanup stc(sd,n);
+        stage_task_cleanup stc(sd,n);
         sd->task();
     } else {
-        int k = i + 1;
+        std::size_t k = i + 1;
         guard_task *stage = sd->stages[k];
         stage->run = boost::bind(stage_task,sd,k,n);
         BOOST_ASSERT(!stage->single_guard);
@@ -108,15 +110,18 @@ void stage_task(stage_data *sd,unsigned int i,unsigned int n) {
 }
 
 
-stage_data::stage_data(boost::function<void()> task_,std::vector<boost::shared_ptr<guard> >& guards) : task(task_), stages(new guard_task*[guards.size()]) {
-    const unsigned int n = guards.size();
-    for(unsigned int i=0;i<n;i++) {
+stage_data::stage_data(boost::function<void()> task_,
+        std::vector<boost::shared_ptr<guard> >& guards) 
+  : task(task_), stages(new guard_task*[guards.size()]) 
+{
+    const std::size_t n = guards.size();
+    for(std::size_t i=0;i<n;i++) {
         stages[i] = new guard_task(false);
     }
 }
 
 void run_guarded(guard_set& guards,boost::function<void()> task) {
-    unsigned int n = guards.guards.size();
+    std::size_t n = guards.guards.size();
     if(n == 0) {
         task();
         return;
@@ -137,19 +142,10 @@ void run_guarded(guard& guard,boost::function<void()> task) {
     tptr->run = task;
     run_guarded(guard,tptr);
 }
-}}};
 
-typedef hpx::actions::plain_action1<
-    hpx::lcos::local::guard_task *,
-    hpx::lcos::local::run_composable
-> composable_run_action;
-
-HPX_REGISTER_PLAIN_ACTION(composable_run_action);
-
-namespace hpx { namespace lcos { namespace local {
 void run_async(guard_task *task) {
     BOOST_ASSERT(task != NULL);
-    hpx::apply<composable_run_action>(hpx::find_here(),task);
+    hpx::apply(&run_composable,task);
 }
 
 // This class exists so that a destructor is
@@ -157,22 +153,22 @@ void run_async(guard_task *task) {
 // we ensure the code works even if exceptions are
 // thrown.
 struct run_composable_cleanup {
-	guard_task *task;
-	run_composable_cleanup(guard_task *task_) : task(task_) {}
-	~run_composable_cleanup() {
-	    guard_task *zero = 0;
-	    // If single_guard is false, then this is one of the
-	    // setup tasks for a multi-guarded task. By not setting
-	    // the next field, we halt processing on items queued
-	    // to this guard.
-	    if(task->single_guard) {
-	        if(!task->next.compare_exchange_strong(zero,task)) {
-	            BOOST_ASSERT(task->next.load()!=NULL);
-	            run_async(zero);
-	        }
-	        free(task);
-	    }
-	}
+    guard_task *task;
+    run_composable_cleanup(guard_task *task_) : task(task_) {}
+    ~run_composable_cleanup() {
+        guard_task *zero = 0;
+        // If single_guard is false, then this is one of the
+        // setup tasks for a multi-guarded task. By not setting
+        // the next field, we halt processing on items queued
+        // to this guard.
+        if(task->single_guard) {
+            if(!task->next.compare_exchange_strong(zero,task)) {
+                BOOST_ASSERT(task->next.load()!=NULL);
+                run_async(zero);
+            }
+            free(task);
+        }
+    }
 };
 
 void run_composable(guard_task *task) {

@@ -5,10 +5,15 @@
 # file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
 set(tests
+    command_line_arguments
     function_argument
+    function_serialization
    )
 
 set(function_argument_FLAGS DEPENDENCIES iostreams_component)
+if(HPX_USE_COMPRESSION_ZLIB AND ZLIB_FOUND)
+  set(function_serialization_FLAGS DEPENDENCIES compress_zlib_lib)
+endif()
 
 foreach(test ${tests})
   set(sources

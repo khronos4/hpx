@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2012 Hartmut Kaiser
+//  Copyright (c) 2007-2013 Hartmut Kaiser
 //  Copyright (c)      2011 Bryce Lelbach
 //
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -26,6 +26,7 @@
 #include <hpx/config/warnings_prefix.hpp>
 
 #include <map>
+#include <algorithm>
 
 namespace hpx { namespace parcelset
 {
@@ -332,10 +333,11 @@ namespace hpx { namespace parcelset
             return find_parcelport(connection_tcpip)->here();
         }
 
+        ///////////////////////////////////////////////////////////////////////
         /// The function register_counter_types() is called during startup to
         /// allow the registration of all performance counter types for this
         /// parcel-handler instance.
-        void register_counter_types(connection_type pp_type = connection_tcpip);
+        void register_counter_types();
 
         /// \brief Make sure the specified locality is not held by any
         /// connection caches anymore
@@ -352,15 +354,63 @@ namespace hpx { namespace parcelset
         /// Return the reference to an existing io_service
         util::io_service_pool* get_thread_pool(char const* name);
 
+        ///////////////////////////////////////////////////////////////////////
+        // Performance counter data
+
+        // number of parcels sent
+        std::size_t get_parcel_send_count(connection_type, bool) const;
+
+        // number of messages sent
+        std::size_t get_message_send_count(connection_type, bool) const;
+
+        // number of parcels received
+        std::size_t get_parcel_receive_count(connection_type, bool) const;
+
+        // number of messages received
+        std::size_t get_message_receive_count(connection_type, bool) const;
+
+        // the total time it took for all sends, from async_write to the
+        // completion handler (nanoseconds)
+        boost::int64_t get_sending_time(connection_type, bool) const;
+
+        // the total time it took for all receives, from async_read to the
+        // completion handler (nanoseconds)
+        boost::int64_t get_receiving_time(connection_type, bool) const;
+
+        // the total time it took for all sender-side serialization operations
+        // (nanoseconds)
+        boost::int64_t get_sending_serialization_time(connection_type, bool) const;
+
+        // the total time it took for all receiver-side serialization
+        // operations (nanoseconds)
+        boost::int64_t get_receiving_serialization_time(connection_type, bool) const;
+
+        // total data sent (bytes)
+        std::size_t get_data_sent(connection_type, bool) const;
+
+        // total data (uncompressed) sent (bytes)
+        std::size_t get_raw_data_sent(connection_type, bool) const;
+
+        // total data received (bytes)
+        std::size_t get_data_received(connection_type, bool) const;
+
+        // total data (uncompressed) received (bytes)
+        std::size_t get_raw_data_received(connection_type, bool) const;
+
+        boost::int64_t get_connection_cache_statistics(connection_type pp_type,
+            parcelport::connection_cache_statistics_type stat_type, bool) const;
+
     protected:
-        std::size_t get_incoming_queue_length() const
+        std::size_t get_incoming_queue_length(bool /*reset*/) const
         {
             return parcels_->get_queue_length();
         }
 
-        std::size_t get_outgoing_queue_length() const;
+        std::size_t get_outgoing_queue_length(bool reset) const;
 
         connection_type find_appropriate_connection_type(naming::locality dest);
+
+        void register_counter_types(connection_type pp_type);
 
     private:
         /// The AGAS client

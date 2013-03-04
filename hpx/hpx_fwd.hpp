@@ -9,11 +9,6 @@
 #if !defined(HPX_HPX_FWD_MAR_24_2008_1119AM)
 #define HPX_HPX_FWD_MAR_24_2008_1119AM
 
-/// \cond NOINTERNAL
-// FIXME: Make HPX work with the "decltype" result_of, and remove this #define!
-#define BOOST_RESULT_OF_USE_TR1
-/// \endcond
-
 #include <cstdlib>
 #include <vector>
 
@@ -192,19 +187,24 @@ namespace hpx
             depleted = 4,       /*!< thread has been depleted (deeply
                                      suspended, it is not known to the
                                      thread manager) */
-            terminated = 5      /*!< thread has been stopped an may be
+            terminated = 5,     /*!< thread has been stopped an may be
                                      garbage collected */
+            staged = 6          /*!< this is not a real thread state, but
+                                     allows to reference staged task descriptions,
+                                     which eventually will be converted into
+                                     thread objects */
         };
 
         /// \ cond NODETAIL
         ///   Please note that if you change the value of threads::terminated
         ///   above, you will need to adjust do_call(dummy<1> = 1) in
-        ///   util/coroutine /detail/coroutine_impl.hpp as well.
+        ///   util/coroutine/detail/coroutine_impl.hpp as well.
         /// \ endcond
 
         /// \enum thread_priority
         enum thread_priority
         {
+            thread_priority_unknown = -1,
             thread_priority_default = 0,      ///< use default priority
             thread_priority_low = 1,          ///< low thread priority
             thread_priority_normal = 2,       ///< normal thread priority (default)
@@ -326,8 +326,17 @@ namespace hpx
 
         /// The function \a get_thread_count returns the number of currently
         /// known threads.
+        ///
+        /// \note If state == unknown this function will not only return the
+        ///       number of currently existing threads, but will add the number
+        ///       of registered task descriptions (which have not been
+        ///       converted into threads yet).
         HPX_API_EXPORT boost::int64_t get_thread_count(
             thread_state_enum state = unknown);
+
+        /// \copydoc get_thread_count(thread_state_enum state)
+        HPX_API_EXPORT boost::int64_t get_thread_count(
+            thread_priority priority, thread_state_enum state = unknown);
     }
 
     /// \namespace actions
@@ -1035,6 +1044,82 @@ namespace hpx
     /// \copydoc hpx::set_lco_error(naming::id_type const& id, boost::exception_ptr const& e)
     HPX_API_EXPORT void set_lco_error(naming::id_type const& id,
         BOOST_RV_REF(boost::exception_ptr) e);
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// \brief Start all active performance counters, optionally naming the
+    ///        section of code
+    ///
+    /// \param ec [in,out] this represents the error status on exit, if this
+    ///           is pre-initialized to \a hpx#throws the function will throw
+    ///           on error instead.
+    ///
+    /// \note     As long as \a ec is not pre-initialized to \a hpx::throws this
+    ///           function doesn't throw but returns the result code using the
+    ///           parameter \a ec. Otherwise it throws an instance of
+    ///           hpx::exception.
+    ///
+    /// \note     The active counters are those which have been specified on
+    ///           the command line while executing the application (see command
+    ///           line option --hpx:print-counter)
+    HPX_API_EXPORT void start_active_counters(error_code& ec = throws);
+
+    /// \brief Resets all active performance counters.
+    ///
+    /// \param ec [in,out] this represents the error status on exit, if this
+    ///           is pre-initialized to \a hpx#throws the function will throw
+    ///           on error instead.
+    ///
+    /// \note     As long as \a ec is not pre-initialized to \a hpx::throws this
+    ///           function doesn't throw but returns the result code using the
+    ///           parameter \a ec. Otherwise it throws an instance of
+    ///           hpx::exception.
+    ///
+    /// \note     The active counters are those which have been specified on
+    ///           the command line while executing the application (see command
+    ///           line option --hpx:print-counter)
+    HPX_API_EXPORT void reset_active_counters(error_code& ec = throws);
+
+    /// \brief Stop all active performance counters.
+    ///
+    /// \param ec [in,out] this represents the error status on exit, if this
+    ///           is pre-initialized to \a hpx#throws the function will throw
+    ///           on error instead.
+    ///
+    /// \note     As long as \a ec is not pre-initialized to \a hpx::throws this
+    ///           function doesn't throw but returns the result code using the
+    ///           parameter \a ec. Otherwise it throws an instance of
+    ///           hpx::exception.
+    ///
+    /// \note     The active counters are those which have been specified on
+    ///           the command line while executing the application (see command
+    ///           line option --hpx:print-counter)
+    HPX_API_EXPORT void stop_active_counters(error_code& ec = throws);
+
+    /// \brief Query all active performance counters, optionally naming the
+    ///        point in code marked by this function,
+    ///
+    /// \param reset       [in] this is an optional falg allowing to reset
+    ///                    the counter value after it has been evaluated.
+    /// \param description [in] this is an optional value naming the point in
+    ///                    the code marked by the call to this function.
+    /// \param ec [in,out] this represents the error status on exit, if this
+    ///           is pre-initialized to \a hpx#throws the function will throw
+    ///           on error instead.
+    ///
+    /// \note     As long as \a ec is not pre-initialized to \a hpx::throws this
+    ///           function doesn't throw but returns the result code using the
+    ///           parameter \a ec. Otherwise it throws an instance of
+    ///           hpx::exception.
+    ///
+    /// \note     The output generated by this function is redirected to the
+    ///           destination specified by the corresponding command line
+    ///           options (see --hpx:print-counter-destination).
+    ///
+    /// \note     The active counters are those which have been specified on
+    ///           the command line while executing the application (see command
+    ///           line option --hpx:print-counter)
+    HPX_API_EXPORT void evaluate_active_counters(bool reset = false,
+        char const* description = 0, error_code& ec = throws);
 }
 
 #include <hpx/lcos/async_fwd.hpp>

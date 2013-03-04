@@ -18,6 +18,8 @@
 #include <hpx/runtime/actions/component_action.hpp>
 #include <hpx/runtime/naming/name.hpp>
 #include <hpx/runtime/naming/address.hpp>
+#include <hpx/runtime/parcelset/policies/message_handler.hpp>
+#include <hpx/util/binary_filter.hpp>
 
 #include <boost/intrusive_ptr.hpp>
 #include <boost/assert.hpp>
@@ -185,6 +187,16 @@ namespace hpx { namespace parcelset
             void set_parcel_id(naming::gid_type const& id)
             {
                 parcel_id_ = id;
+            }
+
+            util::binary_filter* get_serialization_filter() const
+            {
+                return action_->get_serialization_filter();
+            }
+
+            policies::message_handler* get_message_handler() const
+            {
+                return action_->get_message_handler();
             }
 
         private:
@@ -355,6 +367,16 @@ namespace hpx { namespace parcelset
         void set_parcel_id(naming::gid_type const& id)
         {
             data_->set_parcel_id(id);
+        }
+
+        util::binary_filter* get_serialization_filter() const
+        {
+            return data_->get_serialization_filter();
+        }
+
+        policies::message_handler* get_message_handler() const
+        {
+            return data_->get_message_handler();
         }
 
         // generate unique parcel id

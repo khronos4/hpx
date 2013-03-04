@@ -13,6 +13,7 @@
 #include <hpx/exception.hpp>
 #include <hpx/util/logging.hpp>
 #include <hpx/util/block_profiler.hpp>
+#include <hpx/util/get_and_reset_value.hpp>
 #include <hpx/runtime/threads/thread_data.hpp>
 #include <hpx/runtime/threads/topology.hpp>
 #include <hpx/runtime/threads/policies/thread_queue.hpp>
@@ -54,7 +55,8 @@ namespace hpx { namespace threads { namespace policies
                 pu_offset_(0),
                 pu_step_(1),
                 numa_sensitive_(false),
-                affinity_("pu")
+                affinity_domain_("pu"),
+                affinity_desc_()
             {}
 
             init_parameter(std::size_t num_queues,
@@ -62,22 +64,14 @@ namespace hpx { namespace threads { namespace policies
                     bool numa_sensitive = false,
                     std::size_t pu_offset = 0,
                     std::size_t pu_step = 1,
-                    std::string const& affinity = "pu")
+                    std::string const& affinity = "pu",
+                    std::string const& affinity_desc = "")
               : num_queues_(num_queues),
                 max_queue_thread_count_(max_queue_thread_count),
                 pu_offset_(pu_offset), pu_step_(pu_step),
                 numa_sensitive_(numa_sensitive),
-                affinity_(affinity)
-            {}
-
-            init_parameter(std::pair<std::size_t, std::size_t> const& init,
-                    bool numa_sensitive = false)
-              : num_queues_(init.first),
-                max_queue_thread_count_(init.second),
-                pu_offset_(0),
-                pu_step_(1),
-                numa_sensitive_(numa_sensitive),
-                affinity_("pu")
+                affinity_domain_(affinity),
+                affinity_desc_(affinity_desc)
             {}
 
             std::size_t num_queues_;
@@ -85,36 +79,22 @@ namespace hpx { namespace threads { namespace policies
             std::size_t pu_offset_;
             std::size_t pu_step_;
             bool numa_sensitive_;
-            std::string affinity_;
+            std::string affinity_domain_;
+            std::string affinity_desc_;
         };
         typedef init_parameter init_parameter_type;
 
         local_queue_scheduler(init_parameter_type const& init)
           : queues_(init.num_queues_),
             curr_queue_(0),
-            affinity_data_(init.pu_offset_, init.pu_step_, init.affinity_),
+            affinity_data_(init.num_queues_, init.pu_offset_, init.pu_step_,
+                init.affinity_domain_, init.affinity_desc_),
             numa_sensitive_(init.numa_sensitive_),
             topology_(get_topology())
         {
             BOOST_ASSERT(init.num_queues_ != 0);
             for (std::size_t i = 0; i < init.num_queues_; ++i)
                 queues_[i] = new thread_queue<false>(init.max_queue_thread_count_);
-        }
-
-        local_queue_scheduler(std::size_t num_queues,
-                std::size_t max_queue_thread_count = max_thread_count,
-                bool numa_sensitive = false, std::size_t pu_offset = 0,
-                std::size_t pu_step = 1, std::string const& affinity = "pu")
-          : queues_(num_queues),
-            curr_queue_(0),
-            affinity_data_(pu_offset, pu_step, affinity),
-            numa_sensitive_(numa_sensitive),
-            topology_(get_topology()),
-            stolen_threads_(0)
-        {
-            BOOST_ASSERT(num_queues != 0);
-            for (std::size_t i = 0; i < num_queues; ++i)
-                queues_[i] = new thread_queue<false>(max_queue_thread_count);
         }
 
         ~local_queue_scheduler()
@@ -135,9 +115,9 @@ namespace hpx { namespace threads { namespace policies
             return affinity_data_.get_pu_num(num_thread);
         }
 
-        std::size_t get_num_stolen_threads() const
+        std::size_t get_num_stolen_threads(bool reset)
         {
-            return stolen_threads_;
+            return util::get_and_reset_value(stolen_threads_, reset);
         }
 
         ///////////////////////////////////////////////////////////////////////
@@ -161,7 +141,8 @@ namespace hpx { namespace threads { namespace policies
         ///////////////////////////////////////////////////////////////////////
         // Queries the current thread count of the queues.
         boost::int64_t get_thread_count(thread_state_enum state = unknown,
-            std::size_t num_thread = std::size_t(-1)) const
+            thread_priority priority = thread_priority_default,
+            std::size_t num_thread = std::size_t(-1), bool reset = false) const
         {
             // Return thread count of one specific queue.
             if (std::size_t(-1) != num_thread)
@@ -176,6 +157,45 @@ namespace hpx { namespace threads { namespace policies
                 result += queues_[i]->get_thread_count(state);
             return result;
         }
+
+#if HPX_THREAD_MAINTAIN_QUEUE_WAITTIME
+        ///////////////////////////////////////////////////////////////////////
+        boost::int64_t get_average_thread_wait_time(
+            std::size_t num_thread = std::size_t(-1)) const
+        {
+            // Return average thread wait time of one specific queue.
+            if (std::size_t(-1) != num_thread)
+            {
+                BOOST_ASSERT(num_thread < queues_.size());
+                return queues_[num_thread]->get_average_thread_wait_time();
+            }
+
+            // Return the cumulative average thread wait time for all queues.
+            boost::int64_t wait_time = 0;
+            for (std::size_t i = 0; i < queues_.size(); ++i)
+                wait_time += queues_[i]->get_average_thread_wait_time();
+
+            return wait_time / queues_.size();
+        }
+
+        boost::int64_t get_average_task_wait_time(
+            std::size_t num_thread = std::size_t(-1)) const
+        {
+            // Return average task wait time of one specific queue.
+            if (std::size_t(-1) != num_thread)
+            {
+                BOOST_ASSERT(num_thread < queues_.size());
+                return queues_[num_thread]->get_average_task_wait_time();
+            }
+
+            // Return the cumulative average task wait time for all queues.
+            boost::int64_t wait_time = 0;
+            for (std::size_t i = 0; i < queues_.size(); ++i)
+                wait_time += queues_[i]->get_average_task_wait_time();
+
+            return wait_time / queues_.size();
+        }
+#endif
 
         ///////////////////////////////////////////////////////////////////////
         void abort_all_suspended_threads()

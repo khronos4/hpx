@@ -184,7 +184,7 @@ namespace hpx { namespace threads { namespace policies
             return num_thread;
         }
 
-        std::size_t get_num_stolen_threads() const
+        std::size_t get_num_stolen_threads(bool reset) const
         {
             return 0;
         }
@@ -216,7 +216,8 @@ namespace hpx { namespace threads { namespace policies
         ///////////////////////////////////////////////////////////////////////
         // Queries the current thread count of the queues.
         boost::int64_t get_thread_count(thread_state_enum state = unknown,
-            std::size_t num_thread = std::size_t(-1)) const
+            thread_priority priority = thread_priority_default,
+            std::size_t num_thread = std::size_t(-1), bool reset = false) const
         {
             BOOST_ASSERT(tree.size());
             // Return thread count of one specific queue.
@@ -237,6 +238,62 @@ namespace hpx { namespace threads { namespace policies
             }
             return result;
         }
+
+#if HPX_THREAD_MAINTAIN_QUEUE_WAITTIME
+        ///////////////////////////////////////////////////////////////////////
+        boost::int64_t get_average_thread_wait_time(
+            std::size_t num_thread = std::size_t(-1)) const
+        {
+            BOOST_ASSERT(tree.size());
+
+            // Return average thread wait time of one specific queue.
+            if (std::size_t(-1) != num_thread)
+            {
+                BOOST_ASSERT(num_thread < tree[0].size());
+                return tree[0][num_thread]->get_average_thread_wait_time();
+            }
+
+            // Return the cumulative average thread wait time for all queues.
+            boost::int64_t result = 0;
+            boost::int64_t count = 0;
+            for(size_type i = 0; i < tree.size(); ++i)
+            {
+                for(size_type j = 0; j < tree[i].size(); ++j)
+                {
+                    result += tree[i][j]->get_average_thread_wait_time();
+                }
+            }
+
+            return count ? result / count : 0;
+        }
+
+        boost::int64_t get_average_task_wait_time(
+            std::size_t num_thread = std::size_t(-1)) const
+        {
+            BOOST_ASSERT(tree.size());
+
+            // Return average task wait time of one specific queue.
+            if (std::size_t(-1) != num_thread)
+            {
+                BOOST_ASSERT(num_thread < tree[0].size());
+                return tree[0][num_thread]->get_average_task_wait_time();
+            }
+
+            // Return the cumulative average task wait time for all queues.
+            boost::int64_t result = 0;
+            boost::int64_t count = 0;
+            for(size_type i = 0; i < tree.size(); ++i)
+            {
+                for(size_type j = 0; j < tree[i].size(); ++j)
+                {
+                    result += tree[i][j]->get_average_task_wait_time();
+                }
+            }
+
+            return count ? result / count : 0;
+            return 0;
+        }
+#endif
 
         ///////////////////////////////////////////////////////////////////////
         void abort_all_suspended_threads()

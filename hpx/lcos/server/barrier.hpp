@@ -117,7 +117,7 @@ namespace hpx { namespace lcos { namespace server
                     // forcefully abort thread, do not throw
                     error_code ec(lightweight);
                     threads::set_thread_state(id, threads::pending,
-                        threads::wait_abort, threads::thread_priority_normal, ec);
+                        threads::wait_abort, threads::thread_priority_default, ec);
                     if (ec) {
                         LERR_(fatal) << "~barrier: could not abort thread"
                             << get_thread_state_name(thrd->get_state())
@@ -212,7 +212,7 @@ namespace hpx { namespace lcos { namespace server
             }
             catch (boost::exception const& be) {
                 // rethrow again, but this time using the native hpx mechanics
-                HPX_RETHROW_EXCEPTION(hpx::no_success, "barrier::set_exception",
+                HPX_THROW_EXCEPTION(hpx::no_success, "barrier::set_exception",
                     boost::diagnostic_information(be));
             }
         }

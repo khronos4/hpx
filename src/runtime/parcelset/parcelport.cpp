@@ -5,7 +5,7 @@
 
 #include <hpx/hpx_fwd.hpp>
 #include <hpx/runtime/parcelset/tcp/parcelport.hpp>
-#if defined(HPX_USE_SHMEM_PARCELPORT)
+#if defined(HPX_HAVE_PARCELPORT_SHMEM)
 #  include <hpx/runtime/parcelset/shmem/parcelport.hpp>
 #endif
 #include <hpx/util/io_service_pool.hpp>
@@ -29,7 +29,7 @@ namespace hpx { namespace parcelset
 
         case connection_shmem:
             {
-#if defined(HPX_USE_SHMEM_PARCELPORT)
+#if defined(HPX_HAVE_PARCELPORT_SHMEM)
                 // Create shmem based parcelport only if allowed by the 
                 // configuration info.
                 std::string enable_shmem = 
@@ -58,6 +58,24 @@ namespace hpx { namespace parcelset
         }
 
         return boost::shared_ptr<parcelport>();
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // default implementation, just forward to single parcel version
+    void parcelport::put_parcels(std::vector<parcel> const & parcels,
+            std::vector<write_handler_type> const& handlers)
+    {
+        if (parcels.size() != handlers.size())
+        {
+            HPX_THROW_EXCEPTION(bad_parameter, "parcelport::put_parcels",
+                "mismatched number of parcels and handlers");
+            return;
+        }
+
+        for (std::size_t i = 0; i != parcels.size(); ++i)
+        {
+            put_parcel(parcels[i], handlers[i]);
+        }
     }
 }}
 

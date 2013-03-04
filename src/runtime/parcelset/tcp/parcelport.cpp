@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2012 Hartmut Kaiser
+//  Copyright (c) 2007-2013 Hartmut Kaiser
 //  Copyright (c) 2007 Richard D Guidry Jr
 //  Copyright (c) 2011 Bryce Lelbach
 //  Copyright (c) 2011 Katelyn Kufahl
@@ -84,8 +84,8 @@ namespace hpx { namespace parcelset { namespace tcp
     util::io_service_pool* parcelport::get_thread_pool(char const* name)
     {
         if (0 == std::strcmp(name, io_service_pool_.get_name()))
-            return 0;
-        return &io_service_pool_;
+            return &io_service_pool_;
+        return 0;
     }
 
     bool parcelport::run(bool blocking)
@@ -231,6 +231,110 @@ namespace hpx { namespace parcelset { namespace tcp
     }
 
     ///////////////////////////////////////////////////////////////////////////
+    void parcelport::put_parcels(std::vector<parcel> const & parcels,
+        std::vector<write_handler_type> const& handlers)
+    {
+        typedef pending_parcels_map::iterator iterator;
+        typedef pending_parcels_map::mapped_type mapped_type;
+
+        if (parcels.size() != handlers.size())
+        {
+            HPX_THROW_EXCEPTION(bad_parameter, "parcelport::put_parcels",
+                "mismatched number of parcels and handlers");
+            return;
+        }
+
+        naming::locality locality_id = parcels[0].get_destination_locality();
+        naming::gid_type parcel_id = parcels[0].get_parcel_id();
+
+#if defined(HPX_DEBUG)
+        // make sure all parcels go to the same locality
+        for (std::size_t i = 1; i != parcels.size(); ++i)
+        {
+            BOOST_ASSERT(locality_id == parcels[i].get_destination_locality());
+        }
+#endif
+
+        // enqueue the outgoing parcel ...
+        {
+            util::spinlock::scoped_lock l(mtx_);
+
+            mapped_type& e = pending_parcels_[locality_id];
+            for (std::size_t i = 0; i != parcels.size(); ++i)
+            {
+                e.first.push_back(parcels[i]);
+                e.second.push_back(handlers[i]);
+            }
+        }
+
+        error_code ec;
+        parcelport_connection_ptr client_connection =
+            get_connection(locality_id, ec);
+
+        if (!client_connection)
+        {
+            if (ec)
+            {
+                // If there was an error, we might be safe if there are no parcels
+                // to be sent anymore (some other thread already picked them up)
+                // or if there are parcels, but the parcel we were about to sent
+                // has been already processed.
+                util::spinlock::scoped_lock l(mtx_);
+
+                iterator it = pending_parcels_.find(locality_id);
+                if (it != pending_parcels_.end())
+                {
+                    map_second_type& data = it->second;
+
+                    std::vector<parcel>::iterator end = data.first.end();
+                    std::vector<write_handler_type>::iterator fit = data.second.begin();
+                    for (std::vector<parcel>::iterator pit = data.first.begin();
+                         pit != end; ++pit, ++fit)
+                    {
+                        if ((*pit).get_parcel_id() == parcel_id)
+                        {
+                            // our parcel is still here, bailing out
+                            throw hpx::detail::access_exception(ec);
+                        }
+                    }
+                }
+            }
+
+            // We can safely return if no connection is available at this point.
+            // As soon as a connection becomes available it checks for pending
+            // parcels and sends those out.
+            return;
+        }
+
+        std::vector<parcel> parcels_;
+        std::vector<write_handler_type> handlers_;
+
+        {
+            util::spinlock::scoped_lock l(mtx_);
+            iterator it = pending_parcels_.find(locality_id);
+
+            if (it != pending_parcels_.end())
+            {
+                BOOST_ASSERT(it->first == locality_id);
+                std::swap(parcels_, it->second.first);
+                std::swap(handlers_, it->second.second);
+            }
+        }
+
+        // If the parcels didn't get sent by another connection ...
+        if (!parcels_.empty() && !handlers_.empty())
+        {
+            send_pending_parcels(client_connection, parcels_, handlers_);
+        }
+        else
+        {
+            // ... or re-add the stuff to the cache
+            BOOST_ASSERT(locality_id == client_connection->destination());
+            connection_cache_.reclaim(locality_id, client_connection);
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
     void parcelport::put_parcel(parcel const& p, write_handler_type f)
     {
         typedef pending_parcels_map::iterator iterator;
@@ -239,7 +343,7 @@ namespace hpx { namespace parcelset { namespace tcp
         naming::locality locality_id = p.get_destination_locality();
         naming::gid_type parcel_id = p.get_parcel_id();
 
-        // enqueue the incoming parcel ...
+        // enqueue the outgoing parcel ...
         {
             util::spinlock::scoped_lock l(mtx_);
 
@@ -249,29 +353,41 @@ namespace hpx { namespace parcelset { namespace tcp
         }
 
         error_code ec;
-        parcelport_connection_ptr client_connection = get_connection(locality_id, ec);
+        parcelport_connection_ptr client_connection =
+            get_connection(locality_id, ec);
 
         if (!client_connection)
         {
-            // If there was an error, we might be safe if there are no parcels
-            // to be sent anymore (some other thread already picked them up)
-            // or if there are parcels, but the parcel we were about to sent
-            // has been already processed.
-            util::spinlock::scoped_lock l(mtx_);
-
-            iterator it = pending_parcels_.find(locality_id);
-            if (it != pending_parcels_.end())
+            if (ec)
             {
-                map_second_type const& data = it->second;
-                BOOST_FOREACH(parcel const& pp, data.first)
+                // If there was an error, we might be safe if there are no parcels
+                // to be sent anymore (some other thread already picked them up)
+                // or if there are parcels, but the parcel we were about to sent
+                // has been already processed.
+                util::spinlock::scoped_lock l(mtx_);
+
+                iterator it = pending_parcels_.find(locality_id);
+                if (it != pending_parcels_.end())
                 {
-                    if (pp.get_parcel_id() == parcel_id)
+                    map_second_type& data = it->second;
+
+                    std::vector<parcel>::iterator end = data.first.end();
+                    std::vector<write_handler_type>::iterator fit = data.second.begin();
+                    for (std::vector<parcel>::iterator pit = data.first.begin();
+                         pit != end; ++pit, ++fit)
                     {
-                        // our parcel is still here, bailing out
-                        throw hpx::detail::access_exception(ec);
+                        if ((*pit).get_parcel_id() == parcel_id)
+                        {
+                            // our parcel is still here, bailing out
+                            throw hpx::detail::access_exception(ec);
+                        }
                     }
                 }
             }
+
+            // We can safely return if no connection is available at this point.
+            // As soon as a connection becomes available it checks for pending
+            // parcels and sends those out.
             return;
         }
 
@@ -448,9 +564,8 @@ namespace hpx { namespace parcelset { namespace tcp
         // unlikely), bail.
         if (!got_cache_space)
         {
-            HPX_THROWS_IF(ec, network_error,
-                "tcp::parcelport::get_connection",
-                "timed out while trying to find room in the connection cache");
+            if (&ec != &throws)
+                ec = make_success_code();
             return client_connection;
         }
 
@@ -527,12 +642,43 @@ namespace hpx { namespace parcelset { namespace tcp
         BOOST_ASSERT(l.get_port() == connection_port);
 #endif
 
+        if (&ec != &throws)
+            ec = make_success_code();
+
         return client_connection;
+    }
+
+    /// Return the given connection cache statistic
+    boost::int64_t parcelport::get_connection_cache_statistics(
+        connection_cache_statistics_type t, bool reset)
+    {
+        switch (t) {
+        case connection_cache_insertions:
+            return connection_cache_.get_cache_insertions(reset);
+
+        case connection_cache_evictions:
+            return connection_cache_.get_cache_evictions(reset);
+
+        case connection_cache_hits:
+            return connection_cache_.get_cache_hits(reset);
+
+        case connection_cache_misses:
+            return connection_cache_.get_cache_misses(reset);
+
+        default:
+            break;
+        }
+
+        HPX_THROW_EXCEPTION(bad_parameter,
+            "tcp::parcelport::get_connection_cache_statistics",
+            "invalid connection cache statistics type");
+        return 0;
     }
 
     ///////////////////////////////////////////////////////////////////////////
     void decode_message(parcelport& pp,
         boost::shared_ptr<std::vector<char> > parcel_data,
+        boost::uint64_t inbound_data_size,
         performance_counters::parcels::data_point receive_data)
     {
         // protect from un-handled exceptions bubbling up
@@ -545,10 +691,9 @@ namespace hpx { namespace parcelset { namespace tcp
                 {
                     // De-serialize the parcel data
                     util::portable_binary_iarchive archive(*parcel_data,
-                        boost::archive::no_header);
+                        inbound_data_size, boost::archive::no_header);
 
                     std::size_t parcel_count = 0;
-                    std::size_t arg_size = 0;
 
                     archive >> parcel_count;
                     for(std::size_t i = 0; i < parcel_count; ++i)
@@ -560,9 +705,6 @@ namespace hpx { namespace parcelset { namespace tcp
                         // make sure this parcel ended up on the right locality
                         BOOST_ASSERT(p.get_destination_locality() == pp.here());
 
-                        // incoming argument's size
-                        arg_size += hpx::traits::type_size<parcel>::call(p);
-
                         // be sure not to measure add_parcel as serialization time
                         boost::int64_t add_parcel_time = timer.elapsed_nanoseconds();
                         pp.add_received_parcel(p);
@@ -572,7 +714,7 @@ namespace hpx { namespace parcelset { namespace tcp
 
                     // complete received data with parcel count
                     receive_data.num_parcels_ = parcel_count;
-                    receive_data.type_bytes_ = arg_size;
+                    receive_data.raw_bytes_ = archive.bytes_read();
                 }
 
                 // store the time required for serialization

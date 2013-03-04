@@ -25,7 +25,7 @@ namespace hpx { namespace performance_counters
         virtual counter_info get_counter_info() const = 0;
 
         // Retrieve the current Performance Counter value.
-        virtual counter_value get_counter_value() = 0;
+        virtual counter_value get_counter_value(bool reset = false) = 0;
 
         // Reset the Performance Counter (value).
         virtual void reset_counter_value() = 0;
@@ -33,10 +33,10 @@ namespace hpx { namespace performance_counters
         // Set the (initial) value of the Performance Counter.
         virtual void set_counter_value(counter_value const& /*value*/) = 0;
 
-        // Start the Performabnce Counter.
+        // Start the Performance Counter.
         virtual bool start() = 0;
 
-        // Stop the Performabnce Counter.
+        // Stop the Performance Counter.
         virtual bool stop() = 0;
     };
     //]

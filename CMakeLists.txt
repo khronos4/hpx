@@ -176,6 +176,22 @@ else()
 endif()
 
 ###############################################################################
+# Configure compression and other plugins
+###############################################################################
+add_hpx_pseudo_target(plugins)
+add_subdirectory(plugins)
+
+if(HPX_USE_COMPRESSION_BZIP2 AND BZIP2_FOUND)
+  hpx_add_definitions(-DHPX_HAVE_COMPRESSION_BZIP2)
+endif()
+if(HPX_USE_COMPRESSION_SNAPPY AND SNAPPY_FOUND)
+  hpx_add_definitions(-DHPX_HAVE_COMPRESSION_SNAPPY)
+endif()
+if(HPX_USE_COMPRESSION_ZLIB AND ZLIB_FOUND)
+  hpx_add_definitions(-DHPX_HAVE_COMPRESSION_ZLIB)
+endif()
+
+###############################################################################
 # We have a patched version of FindBoost loosely based on the one that Kitware ships
 find_package(HPX_Boost)
 
@@ -280,9 +296,9 @@ endif()
 # Decide whether to use shared memory based parcelport (starting with Boost V1.52)
 ################################################################################
 if(${BOOST_MINOR_VERSION} GREATER 51)
-  hpx_option(HPX_USE_SHMEM_PARCELPORT BOOL "Enable parcelport based on shared memory (default: OFF)." OFF ADVANCED)
-  if(HPX_USE_SHMEM_PARCELPORT)
-    hpx_add_definitions(-DHPX_USE_SHMEM_PARCELPORT)
+  hpx_option(HPX_USE_PARCELPORT_SHMEM BOOL "Enable parcelport based on shared memory (default: OFF)." OFF ADVANCED)
+  if(HPX_USE_PARCELPORT_SHMEM)
+    hpx_add_definitions(-DHPX_HAVE_PARCELPORT_SHMEM)
   endif()
 endif()
 
@@ -396,6 +412,12 @@ endif()
 # PAPI event counters
 ################################################################################
 find_package(HPX_PAPI)
+
+################################################################################
+# Apex event counters
+################################################################################
+find_package(HPX_TAU)
+find_package(HPX_APEX)
 
 ################################################################################
 # hwloc
@@ -1103,6 +1125,12 @@ if(HPX_BUILD_EXAMPLES)
   add_subdirectory(examples)
 endif()
 
+###############################################################################
+# Activate plugins
+###############################################################################
+add_plugin_modules()
+
+###############################################################################
 hpx_option(HPX_BUILD_TESTS BOOL "Build HPX tests (default: ON)" ON ADVANCED)
 
 if(HPX_BUILD_TESTS)
@@ -1327,8 +1355,8 @@ if(NOT HPX_NO_INSTALL)
       COMPONENT docs)
 
     install(
-      DIRECTORY ${hpx_SOURCE_DIR}/docs/html/code/
-      DESTINATION share/hpx-${HPX_VERSION}/doc/html/code
+      DIRECTORY ${hpx_SOURCE_DIR}/docs/html/src/
+      DESTINATION share/hpx-${HPX_VERSION}/doc/html/src
       COMPONENT docs
       FILES_MATCHING PATTERN "*.css"
       PATTERN ".git" EXCLUDE)

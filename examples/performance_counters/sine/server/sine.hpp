@@ -25,7 +25,7 @@ namespace performance_counters { namespace sine { namespace server
 
         /// This function will be called in order to query the current value of
         /// this performance counter
-        hpx::performance_counters::counter_value get_counter_value();
+        hpx::performance_counters::counter_value get_counter_value(bool reset);
 
         /// The functions below will be called to start and stop collecting
         /// counter values from this counter.
@@ -46,7 +46,6 @@ namespace performance_counters { namespace sine { namespace server
         boost::uint64_t evaluated_at_;
 
         hpx::util::interval_timer timer_;
-        boost::uint64_t started_at_;
     };
 }}}
 

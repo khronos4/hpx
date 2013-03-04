@@ -60,7 +60,7 @@ namespace hpx { namespace threads { namespace policies
             return num_thread;
         }
 
-        std::size_t get_num_stolen_threads() const
+        std::size_t get_num_stolen_threads(bool reset) const
         {
             return 0;
         }
@@ -74,7 +74,8 @@ namespace hpx { namespace threads { namespace policies
 
         ///////////////////////////////////////////////////////////////////////
         boost::int64_t get_thread_count(thread_state_enum state = unknown,
-            std::size_t num_thread = std::size_t(-1)) const
+            thread_priority priority = thread_priority_default,
+            std::size_t num_thread = std::size_t(-1), bool reset = false) const
         {
             return queue_.get_thread_count(state);
         }
@@ -84,6 +85,21 @@ namespace hpx { namespace threads { namespace policies
         {
             return queue_.abort_all_suspended_threads(0);
         }
+
+#if HPX_THREAD_MAINTAIN_QUEUE_WAITTIME
+        ///////////////////////////////////////////////////////////////////////
+        boost::int64_t get_average_thread_wait_time(
+            std::size_t num_thread = std::size_t(-1)) const
+        {
+            return queue_.get_average_thread_wait_time();
+        }
+
+        boost::int64_t get_average_task_wait_time(
+            std::size_t num_thread = std::size_t(-1)) const
+        {
+            return queue_.get_average_task_wait_time();
+        }
+#endif
 
         ///////////////////////////////////////////////////////////////////////
         bool cleanup_terminated(bool delete_all = false)

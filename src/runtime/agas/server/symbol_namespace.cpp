@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //  Copyright (c) 2011 Bryce Adelstein-Lelbach
-//  Copyright (c) 2012 Hartmut Kaiser
+//  Copyright (c) 2012-2013 Hartmut Kaiser
 //
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -10,6 +10,7 @@
 #include <hpx/runtime/actions/continuation.hpp>
 #include <hpx/runtime/agas/server/symbol_namespace.hpp>
 #include <hpx/include/performance_counters.hpp>
+#include <hpx/util/get_and_reset_value.hpp>
 
 namespace hpx { namespace agas
 {
@@ -222,10 +223,10 @@ response symbol_namespace::bind(
 
     if (it != end)
     {
-        boost::uint16_t const credits = naming::get_credit_from_gid(gid);
+        boost::uint16_t const credits = naming::detail::get_credit_from_gid(gid);
         naming::gid_type raw_gid = it->second;
-        naming::strip_credit_from_gid(raw_gid);
-        naming::strip_credit_from_gid(gid);
+        naming::detail::strip_credit_from_gid(raw_gid);
+        naming::detail::strip_credit_from_gid(gid);
 
         // increase reference count
         if (raw_gid == gid)
@@ -234,10 +235,10 @@ response symbol_namespace::bind(
                 "symbol_namespace::bind, key(%1%), gid(%2%), old_credit(%3%), "
                 "new_credit(%4%)")
                 % key % gid
-                % naming::get_credit_from_gid(it->second)
-                % (naming::get_credit_from_gid(it->second) + credits));
+                % naming::detail::get_credit_from_gid(it->second)
+                % (naming::detail::get_credit_from_gid(it->second) + credits));
 
-            naming::add_credit_to_gid(it->second, credits);
+            naming::detail::add_credit_to_gid(it->second, credits);
 
             if (&ec != &throws)
                 ec = make_success_code();
@@ -245,7 +246,7 @@ response symbol_namespace::bind(
             return response(symbol_ns_bind);
         }
 
-        naming::add_credit_to_gid(gid, credits);
+        naming::detail::add_credit_to_gid(gid, credits);
         LAGAS_(info) << (boost::format(
             "symbol_namespace::bind, key(%1%), gid(%2%), response(no_success)")
             % key % gid);
@@ -309,9 +310,9 @@ response symbol_namespace::resolve(
     naming::gid_type gid;
 
     // Is this entry reference counted?
-    if (naming::get_credit_from_gid(it->second) != 0)
+    if (naming::detail::get_credit_from_gid(it->second) != 0)
     {
-        gid = naming::split_credits_for_gid(it->second);
+        gid = naming::detail::split_credits_for_gid(it->second);
 
         LAGAS_(debug) << (boost::format(
             "symbol_namespace::resolve, split credits for entry, "
@@ -319,13 +320,13 @@ response symbol_namespace::resolve(
             % key % it->second % gid);
 
         // Credit exhaustion - we need to get more.
-        if (0 == naming::get_credit_from_gid(gid))
+        if (0 == naming::detail::get_credit_from_gid(gid))
         {
-            BOOST_ASSERT(1 == naming::get_credit_from_gid(it->second));
+            BOOST_ASSERT(1 == naming::detail::get_credit_from_gid(it->second));
             naming::get_agas_client().incref(gid, 2 * HPX_INITIAL_GLOBALCREDIT);
 
-            naming::add_credit_to_gid(gid, HPX_INITIAL_GLOBALCREDIT);
-            naming::add_credit_to_gid(it->second, HPX_INITIAL_GLOBALCREDIT);
+            naming::detail::add_credit_to_gid(gid, HPX_INITIAL_GLOBALCREDIT);
+            naming::detail::add_credit_to_gid(it->second, HPX_INITIAL_GLOBALCREDIT);
 
             LAGAS_(debug) << (boost::format(
                 "symbol_namespace::resolve, incremented entry credits, "
@@ -453,21 +454,21 @@ response symbol_namespace::statistics_counter(
 
     typedef symbol_namespace::counter_data cd;
 
-    HPX_STD_FUNCTION<boost::int64_t()> get_data_func;
+    HPX_STD_FUNCTION<boost::int64_t(bool)> get_data_func;
     if (target == detail::counter_target_count)
     {
         switch (code) {
         case symbol_ns_bind:
-            get_data_func = boost::bind(&cd::get_bind_count, &counter_data_);
+            get_data_func = boost::bind(&cd::get_bind_count, &counter_data_, ::_1);
             break;
         case symbol_ns_resolve:
-            get_data_func = boost::bind(&cd::get_resolve_count, &counter_data_);
+            get_data_func = boost::bind(&cd::get_resolve_count, &counter_data_, ::_1);
             break;
         case symbol_ns_unbind:
-            get_data_func = boost::bind(&cd::get_unbind_count, &counter_data_);
+            get_data_func = boost::bind(&cd::get_unbind_count, &counter_data_, ::_1);
             break;
         case symbol_ns_iterate_names:
-            get_data_func = boost::bind(&cd::get_iterate_names_count, &counter_data_);
+            get_data_func = boost::bind(&cd::get_iterate_names_count, &counter_data_, ::_1);
             break;
         default:
             HPX_THROWS_IF(ec, bad_parameter
@@ -479,16 +480,16 @@ response symbol_namespace::statistics_counter(
     else {
         switch (code) {
         case symbol_ns_bind:
-            get_data_func = boost::bind(&cd::get_bind_time, &counter_data_);
+            get_data_func = boost::bind(&cd::get_bind_time, &counter_data_, ::_1);
             break;
         case symbol_ns_resolve:
-            get_data_func = boost::bind(&cd::get_resolve_time, &counter_data_);
+            get_data_func = boost::bind(&cd::get_resolve_time, &counter_data_, ::_1);
             break;
         case symbol_ns_unbind:
-            get_data_func = boost::bind(&cd::get_unbind_time, &counter_data_);
+            get_data_func = boost::bind(&cd::get_unbind_time, &counter_data_, ::_1);
             break;
         case symbol_ns_iterate_names:
-            get_data_func = boost::bind(&cd::get_iterate_names_time, &counter_data_);
+            get_data_func = boost::bind(&cd::get_iterate_names_time, &counter_data_, ::_1);
             break;
         default:
             HPX_THROWS_IF(ec, bad_parameter
@@ -516,53 +517,53 @@ response symbol_namespace::statistics_counter(
 } // }}}
 
 // access current counter values
-boost::int64_t symbol_namespace::counter_data::get_bind_count() const
+boost::int64_t symbol_namespace::counter_data::get_bind_count(bool reset)
 {
     mutex_type::scoped_lock l(mtx_);
-    return bind_.count_;
+    return util::get_and_reset_value(bind_.count_, reset);
 }
 
-boost::int64_t symbol_namespace::counter_data::get_resolve_count() const
+boost::int64_t symbol_namespace::counter_data::get_resolve_count(bool reset)
 {
     mutex_type::scoped_lock l(mtx_);
-    return resolve_.count_;
+    return util::get_and_reset_value(resolve_.count_, reset);
 }
 
-boost::int64_t symbol_namespace::counter_data::get_unbind_count() const
+boost::int64_t symbol_namespace::counter_data::get_unbind_count(bool reset)
 {
     mutex_type::scoped_lock l(mtx_);
-    return unbind_.count_;
+    return util::get_and_reset_value(unbind_.count_, reset);
 }
 
-boost::int64_t symbol_namespace::counter_data::get_iterate_names_count() const
+boost::int64_t symbol_namespace::counter_data::get_iterate_names_count(bool reset)
 {
     mutex_type::scoped_lock l(mtx_);
-    return iterate_names_.count_;
+    return util::get_and_reset_value(iterate_names_.count_, reset);
 }
 
 // access execution time counters
-boost::int64_t symbol_namespace::counter_data::get_bind_time() const
+boost::int64_t symbol_namespace::counter_data::get_bind_time(bool reset)
 {
     mutex_type::scoped_lock l(mtx_);
-    return bind_.time_;
+    return util::get_and_reset_value(bind_.time_, reset);
 }
 
-boost::int64_t symbol_namespace::counter_data::get_resolve_time() const
+boost::int64_t symbol_namespace::counter_data::get_resolve_time(bool reset)
 {
     mutex_type::scoped_lock l(mtx_);
-    return resolve_.time_;
+    return util::get_and_reset_value(resolve_.time_, reset);
 }
 
-boost::int64_t symbol_namespace::counter_data::get_unbind_time() const
+boost::int64_t symbol_namespace::counter_data::get_unbind_time(bool reset)
 {
     mutex_type::scoped_lock l(mtx_);
-    return unbind_.time_;
+    return util::get_and_reset_value(unbind_.time_, reset);
 }
 
-boost::int64_t symbol_namespace::counter_data::get_iterate_names_time() const
+boost::int64_t symbol_namespace::counter_data::get_iterate_names_time(bool reset)
 {
     mutex_type::scoped_lock l(mtx_);
-    return iterate_names_.time_;
+    return util::get_and_reset_value(iterate_names_.time_, reset);
 }
 
 // increment counter values

@@ -13,6 +13,7 @@
 #include <hpx/config.hpp>
 #include <hpx/exception.hpp>
 #include <hpx/util/logging.hpp>
+#include <hpx/util/get_and_reset_value.hpp>
 #include <hpx/runtime/threads/thread_data.hpp>
 #include <hpx/runtime/threads/topology.hpp>
 #include <hpx/runtime/threads/policies/thread_deque.hpp>
@@ -97,9 +98,9 @@ struct abp_queue_scheduler : boost::noncopyable
         return num_thread;
     }
 
-    std::size_t get_num_stolen_threads() const
+    std::size_t get_num_stolen_threads(bool reset)
     {
-        return stolen_threads_;
+        return util::get_and_reset_value(stolen_threads_, reset);
     }
 
     ///////////////////////////////////////////////////////////////////////
@@ -123,7 +124,8 @@ struct abp_queue_scheduler : boost::noncopyable
     ///////////////////////////////////////////////////////////////////////
     // Queries the current thread count of the queues.
     boost::int64_t get_thread_count(thread_state_enum state = unknown,
-        std::size_t num_thread = std::size_t(-1)) const
+        thread_priority priority = thread_priority_default,
+        std::size_t num_thread = std::size_t(-1), bool reset = false) const
     {
         // Return thread count of one specific queue.
         if (std::size_t(-1) != num_thread)
@@ -138,6 +140,45 @@ struct abp_queue_scheduler : boost::noncopyable
             result += queues_[i]->get_thread_count(state);
         return result;
     }
+
+#if HPX_THREAD_MAINTAIN_QUEUE_WAITTIME
+    ///////////////////////////////////////////////////////////////////////////
+    boost::int64_t get_average_thread_wait_time(
+        std::size_t num_thread = std::size_t(-1)) const
+    {
+        //  Return average thread wait time of one specific queue.
+        if (std::size_t(-1) != num_thread)
+        {
+            BOOST_ASSERT(num_thread < queues_.size());
+            return queues_[num_thread]->get_average_thread_wait_time();
+        }
+
+        // Return the cumulative average thread wait time for all queues.
+        boost::int64_t wait_time = 0;
+        for (std::size_t i = 0; i < queues_.size(); ++i)
+            wait_time += queues_[i]->get_average_thread_wait_time();
+
+        return wait_time / queues_.size();
+    }
+
+    boost::int64_t get_average_task_wait_time(
+        std::size_t num_thread = std::size_t(-1)) const
+    {
+        //  Return average task wait time of one specific queue.
+        if (std::size_t(-1) != num_thread)
+        {
+            BOOST_ASSERT(num_thread < queues_.size());
+            return queues_[num_thread]->get_average_task_wait_time();
+        }
+
+        // Return the cumulative average task wait time for all queues.
+        boost::int64_t wait_time = 0;
+        for (std::size_t i = 0; i < queues_.size(); ++i)
+            wait_time += queues_[i]->get_average_task_wait_time();
+
+        return wait_time / queues_.size();
+    }
+#endif
 
     ///////////////////////////////////////////////////////////////////////////
     void abort_all_suspended_threads()

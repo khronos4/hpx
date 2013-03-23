@@ -119,7 +119,7 @@ namespace hpx { namespace util { namespace plugin {
             // a symbol, the LoadLibrary function increases the refcnt of the dll
             // so in the end the dll class holds one refcnt and so does every
             // symbol.
-            HMODULE handle = ::LoadLibrary(dll_name.c_str());
+            HMODULE handle = ::LoadLibraryA(dll_name.c_str());
             if (!handle) {
                 HPX_PLUGIN_OSSTREAM str;
                 str << "Hpx.Plugin: Could not open shared library '"
@@ -157,11 +157,11 @@ namespace hpx { namespace util { namespace plugin {
             if (dll_name.empty()) {
             // load main module
                 char buffer[_MAX_PATH];
-                ::GetModuleFileName(NULL, buffer, sizeof(buffer));
+                ::GetModuleFileNameA(NULL, buffer, sizeof(buffer));
                 dll_name = buffer;
             }
 
-            dll_handle = ::LoadLibrary(dll_name.c_str());
+            dll_handle = ::LoadLibraryA(dll_name.c_str());
             if (!dll_handle) {
                 HPX_PLUGIN_OSSTREAM str;
                 str << "Hpx.Plugin: Could not open shared library '"
@@ -177,7 +177,7 @@ namespace hpx { namespace util { namespace plugin {
         {
             char buffer[_MAX_PATH];
             DWORD name_length =
-                GetModuleFileName(dll_handle, buffer, sizeof(buffer));
+                GetModuleFileNameA(dll_handle, buffer, sizeof(buffer));
             if (name_length <= 0) {
                 HPX_PLUGIN_OSSTREAM str;
                 str << "Hpx.Plugin: Could not extract path the shared "
@@ -187,7 +187,7 @@ namespace hpx { namespace util { namespace plugin {
             }
 
             // extract the directory name
-            PathRemoveFileSpec(buffer);
+            PathRemoveFileSpecA(buffer);
             return buffer;
         }
 

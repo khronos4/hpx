@@ -39,7 +39,7 @@ namespace hpx { namespace lcos { namespace local
 #if defined(__ANDROID__) && defined(ANDROID)
         int v_;
 #else
-        boost::uint64_t v_;
+        volatile boost::uint64_t v_;
 #endif
 
         BOOST_MOVABLE_BUT_NOT_COPYABLE(spinlock)
@@ -109,7 +109,7 @@ namespace hpx { namespace lcos { namespace local
 
         spinlock(BOOST_RV_REF(spinlock) rhs)
 #if defined(BOOST_WINDOWS)
-          : v_(BOOST_INTERLOCKED_EXCHANGE(&rhs.v_, 0))
+          : v_(InterlockedExchange64((volatile LONGLONG*)&rhs.v_, 0))
 #else
           : v_(__sync_lock_test_and_set(&rhs.v_, 0))
 #endif
@@ -125,7 +125,7 @@ namespace hpx { namespace lcos { namespace local
             if (this != &rhs) {
                 unlock();
 #if defined(BOOST_WINDOWS)
-                v_ = BOOST_INTERLOCKED_EXCHANGE(&rhs.v_, 0);
+                v_ = InterlockedExchange64((volatile LONGLONG*)&rhs.v_, 0);
 #else
                 v_ = __sync_lock_test_and_set(&rhs.v_, 0);
 #endif
@@ -151,7 +151,7 @@ namespace hpx { namespace lcos { namespace local
             HPX_ITT_SYNC_PREPARE(this);
 
 #if defined(BOOST_WINDOWS)
-            boost::uint64_t r = BOOST_INTERLOCKED_EXCHANGE(&v_, 1);
+            boost::uint64_t r = InterlockedExchange64((volatile LONGLONG*)&v_, 1);
             BOOST_COMPILER_FENCE
 #else
             boost::uint64_t r = __sync_lock_test_and_set(&v_, 1);

@@ -758,6 +758,7 @@ if(MSVC)
 
   hpx_add_definitions(-DBOOST_USE_WINDOWS_H)
   hpx_add_definitions(-DBOOST_SERIALIZATION_DYN_LINK)
+  hpx_add_definitions(-DBOOST_ALL_DYN_LINK)
   hpx_add_definitions(-DHPX_COROUTINE_USE_FIBERS)
   hpx_add_definitions(-DPSAPI_VERSION=1)
 
